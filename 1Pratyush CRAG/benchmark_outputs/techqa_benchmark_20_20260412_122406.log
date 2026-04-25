@@ -1,0 +1,52 @@
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 910 examples [00:00, 30030.50 examples/s]
+[Dataset] Loaded local JSON from /home/pratyush/Documents/CRAG/crag_project/techqa_train.json
+[Dataset] Built corpus with 496 unique context docs
+[Dataset] Built 910 QA samples
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 2471.43it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Batches:   0%|          | 0/16 [00:00<?, ?it/s]Batches:   6%|▋         | 1/16 [00:00<00:09,  1.61it/s]Batches:  12%|█▎        | 2/16 [00:00<00:04,  2.84it/s]Batches:  19%|█▉        | 3/16 [00:00<00:03,  3.78it/s]Batches:  25%|██▌       | 4/16 [00:01<00:02,  4.48it/s]Batches:  31%|███▏      | 5/16 [00:01<00:02,  4.86it/s]Batches:  38%|███▊      | 6/16 [00:01<00:02,  4.77it/s]Batches:  44%|████▍     | 7/16 [00:01<00:01,  4.97it/s]Batches:  50%|█████     | 8/16 [00:01<00:01,  5.59it/s]Batches:  56%|█████▋    | 9/16 [00:01<00:01,  6.01it/s]Batches:  62%|██████▎   | 10/16 [00:02<00:01,  6.00it/s]Batches:  69%|██████▉   | 11/16 [00:02<00:00,  5.92it/s]Batches:  75%|███████▌  | 12/16 [00:02<00:00,  6.34it/s]Batches:  81%|████████▏ | 13/16 [00:02<00:00,  5.95it/s]Batches:  88%|████████▊ | 14/16 [00:02<00:00,  6.31it/s]Batches:  94%|█████████▍| 15/16 [00:02<00:00,  6.68it/s]Batches: 100%|██████████| 16/16 [00:02<00:00,  5.42it/s]
+[Retriever] FAISS index built with 496 docs (dim=384).
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 3166.42it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 2817.50it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+[Generator] No model_path provided. Using default: Qwen/Qwen2.5-0.5B-Instruct
+[Generator] CUDA detected. Loading 4-bit quantized model.
+Traceback (most recent call last):
+  File "/home/pratyush/Documents/CRAG/crag_project/techqa_evaluate.py", line 297, in <module>
+    main()
+  File "/home/pratyush/Documents/CRAG/crag_project/techqa_evaluate.py", line 285, in main
+    run_techqa_eval(
+  File "/home/pratyush/Documents/CRAG/crag_project/techqa_evaluate.py", line 190, in run_techqa_eval
+    generator = QwenGenerator(backend=backend, model_path=model_path, max_new_tokens=96, context_token_limit=512)
+  File "/home/pratyush/Documents/CRAG/crag_project/generator.py", line 37, in __init__
+    self._init_transformers()
+  File "/home/pratyush/Documents/CRAG/crag_project/generator.py", line 93, in _init_transformers
+    self._hf_model = AutoModelForCausalLM.from_pretrained(
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/models/auto/auto_factory.py", line 387, in from_pretrained
+    return model_class.from_pretrained(
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4034, in from_pretrained
+    hf_quantizer, config, device_map = get_hf_quantizer(
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/quantizers/auto.py", line 342, in get_hf_quantizer
+    hf_quantizer.validate_environment(
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/quantizers/quantizer_bnb_4bit.py", line 62, in validate_environment
+    raise ImportError(
+ImportError: Using `bitsandbytes` 4-bit quantization requires bitsandbytes: `pip install -U bitsandbytes>=0.46.1`

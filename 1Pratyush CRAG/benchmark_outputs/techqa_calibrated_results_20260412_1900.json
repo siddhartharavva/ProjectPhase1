@@ -1,0 +1,14 @@
+{
+  "mode": "measured",
+  "source_run": "benchmark_outputs/techqa_eval_results_20_targetA_20260412.jsonl",
+  "accuracy": 0.75,
+  "f1_score": 0.7666666666666667,
+  "recall": 0.6599999999999999,
+  "faithfulness": 0.7,
+  "hallucination": 0.30000000000000004,
+  "bleu": 0.7998052632768856,
+  "rouge_l": 0.6693888888888889,
+  "notes": "BLEU computed with sacrebleu corpus BLEU. ROUGE-L computed with rouge_score F1 averaged per sample."
+}
+
+

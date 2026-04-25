@@ -1,0 +1,11 @@
+{
+  "dataset": "SciFact validation/dev (HF fallback)",
+  "num_samples": 20,
+  "initial_accuracy": 0.25,
+  "final_accuracy": 0.6,
+  "accuracy_gain": 0.35,
+  "avg_faithfulness": 0.6468324105441571,
+  "avg_retrieval_improvement": 0.11275816571712495,
+  "correction_success_rate": 0.6666666666666666,
+  "source_jsonl": "/home/pratyush/Documents/CRAG/crag_project/benchmark_outputs/scifact_eval_results_20_20260408_004318.jsonl"
+}

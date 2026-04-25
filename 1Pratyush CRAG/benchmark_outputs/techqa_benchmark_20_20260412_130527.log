@@ -1,0 +1,44 @@
+[Dataset] Loaded local JSON from /home/pratyush/Documents/CRAG/crag_project/techqa_train.json
+[Dataset] Built corpus with 496 unique context docs
+[Dataset] Built 910 QA samples
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 3675.61it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Batches:   0%|          | 0/16 [00:00<?, ?it/s]Batches:   6%|▋         | 1/16 [00:00<00:06,  2.43it/s]Batches:  12%|█▎        | 2/16 [00:00<00:03,  3.69it/s]Batches:  19%|█▉        | 3/16 [00:00<00:02,  4.40it/s]Batches:  25%|██▌       | 4/16 [00:00<00:02,  4.82it/s]Batches:  31%|███▏      | 5/16 [00:01<00:02,  4.83it/s]Batches:  38%|███▊      | 6/16 [00:01<00:01,  5.11it/s]Batches:  44%|████▍     | 7/16 [00:01<00:01,  5.34it/s]Batches:  50%|█████     | 8/16 [00:01<00:01,  5.50it/s]Batches:  56%|█████▋    | 9/16 [00:01<00:01,  5.70it/s]Batches:  62%|██████▎   | 10/16 [00:01<00:01,  5.71it/s]Batches:  69%|██████▉   | 11/16 [00:02<00:00,  5.80it/s]Batches:  75%|███████▌  | 12/16 [00:02<00:00,  5.77it/s]Batches:  81%|████████▏ | 13/16 [00:02<00:00,  5.60it/s]Batches:  88%|████████▊ | 14/16 [00:02<00:00,  5.66it/s]Batches:  94%|█████████▍| 15/16 [00:02<00:00,  5.66it/s]Batches: 100%|██████████| 16/16 [00:02<00:00,  5.42it/s]
+[Retriever] FAISS index built with 496 docs (dim=384).
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 3439.27it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 2435.46it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+[QA] Loading extractive QA model: deepset/roberta-base-squad2 (device=0)
+Traceback (most recent call last):
+  File "/home/pratyush/Documents/CRAG/crag_project/techqa_evaluate.py", line 441, in <module>
+    main()
+  File "/home/pratyush/Documents/CRAG/crag_project/techqa_evaluate.py", line 429, in main
+    run_techqa_eval(
+  File "/home/pratyush/Documents/CRAG/crag_project/techqa_evaluate.py", line 321, in run_techqa_eval
+    qa_pipe = pipeline("question-answering", model=qa_model, tokenizer=qa_model, device=qa_device)
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/pipelines/__init__.py", line 747, in pipeline
+    normalized_task, targeted_task, task_options = check_task(task)
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/pipelines/__init__.py", line 355, in check_task
+    return PIPELINE_REGISTRY.check_task(task)
+  File "/home/pratyush/anaconda3/envs/rag_env/lib/python3.10/site-packages/transformers/pipelines/base.py", line 1338, in check_task
+    raise KeyError(f"Unknown task {task}, available tasks are {self.get_supported_tasks()}")
+KeyError: "Unknown task question-answering, available tasks are ['any-to-any', 'audio-classification', 'automatic-speech-recognition', 'depth-estimation', 'document-question-answering', 'feature-extraction', 'fill-mask', 'image-classification', 'image-feature-extraction', 'image-segmentation', 'image-text-to-text', 'keypoint-matching', 'mask-generation', 'ner', 'object-detection', 'sentiment-analysis', 'table-question-answering', 'text-classification', 'text-generation', 'text-to-audio', 'text-to-speech', 'token-classification', 'video-classification', 'zero-shot-audio-classification', 'zero-shot-classification', 'zero-shot-image-classification', 'zero-shot-object-detection']"

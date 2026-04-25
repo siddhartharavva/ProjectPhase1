@@ -1,0 +1,13 @@
+{
+  "dataset": "nvidia/TechQA-RAG-Eval (train)",
+  "num_samples": 20,
+  "supervised_overfit": false,
+  "initial_em": 0.0,
+  "final_em": 0.0,
+  "em_gain": 0.0,
+  "initial_f1": 0.07427378227961057,
+  "final_f1": 0.07427378227961057,
+  "f1_gain": 0.0,
+  "avg_retrieval_improvement": 0.0,
+  "source_jsonl": "benchmark_outputs/techqa_eval_results_20_clean_20260412_1326.jsonl"
+}

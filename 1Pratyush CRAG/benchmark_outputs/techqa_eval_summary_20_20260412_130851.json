@@ -1,0 +1,12 @@
+{
+  "dataset": "nvidia/TechQA-RAG-Eval (train)",
+  "num_samples": 20,
+  "initial_em": 0.0,
+  "final_em": 0.0,
+  "em_gain": 0.0,
+  "initial_f1": 0.15503616761819128,
+  "final_f1": 0.17084499114760304,
+  "f1_gain": 0.015808823529411764,
+  "avg_retrieval_improvement": 0.023655721623051386,
+  "source_jsonl": "/home/pratyush/Documents/CRAG/crag_project/benchmark_outputs/techqa_eval_results_20_20260412_130851.jsonl"
+}
