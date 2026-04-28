@@ -1,25 +1,23 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
 import pandas as pd
 
-# Load your results file
-df = pd.read_csv("rag_results_techqa.csv")
 
-# Ensure numeric columns (important if CSV saved weirdly)
-cols = ["EM", "F1", "Recall@K", "Hallucination", "Confidence"]
-for c in cols:
-    df[c] = pd.to_numeric(df[c], errors="coerce")
+BASE_DIR = Path(__file__).resolve().parent
 
-# Group by model and compute mean
-summary = df.groupby("model").agg({
-    "EM": "mean",
-    "F1": "mean",
-    "Recall@K": "mean",
-    "Hallucination": "mean",
-    "Confidence": "mean",
-}).reset_index()
 
-# Print nicely
-print("\n===== SUMMARY =====")
-print(summary)
+def main() -> None:
+    csv_path = BASE_DIR / "rag_results_techqa.csv"
+    df = pd.read_csv(csv_path)
+    numeric = df.select_dtypes(include=["number"]).columns.tolist()
+    summary = df.groupby("generator_model")[numeric].mean(numeric_only=True).reset_index()
+    print(summary)
+    summary.to_csv(BASE_DIR / "summary_techqa.csv", index=False)
+    (BASE_DIR / "summary_techqa.json").write_text(summary.to_json(orient="records", indent=2), encoding="utf-8")
 
-# Save
-summary.to_csv("summary_techqa.csv", index=False)
+
+if __name__ == "__main__":
+    main()

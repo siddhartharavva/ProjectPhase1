@@ -7,12 +7,20 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from dataset import CorpusItem
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from techqa_common import DEFAULT_EMBED_MODEL  # noqa: E402
 
 
 class Retriever:
-    """Embedding retriever over SciFact abstracts using FAISS."""
+    """Embedding retriever using the shared TechQA embedding backbone."""
 
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
+    def __init__(self, model_name: str = DEFAULT_EMBED_MODEL) -> None:
         self.model_name = model_name
         self.encoder = SentenceTransformer(model_name)
         self.index = None
