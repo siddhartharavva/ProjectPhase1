@@ -70,7 +70,7 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
 
         if args.skip_bertscore or args.mode == "fast":
             command.append("--skip_bertscore")
-        if args.use_4bit and model_name in {"vanilla", "bm25"}:
+        if args.use_4bit and model_name in {"vanilla", "bm25", "hybrid"}:
             command.append("--use_4bit")
 
         if model_name == "crag":

@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 
 from techqa_common import (  # noqa: E402
     build_techqa_corpus_and_samples as shared_build_techqa_corpus_and_samples,
+    configure_runtime,
     compute_answer_metrics,
     compute_retrieval_metrics,
     finalize_with_bertscore,
@@ -38,10 +39,7 @@ from techqa_common import (  # noqa: E402
 
 
 UNANSWERABLE = "UNANSWERABLE"
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-if torch.cuda.is_available():
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
+configure_runtime()
 
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "if", "then", "so", "to", "of", "in", "on", "for", "by", "with", "as",
@@ -658,8 +656,11 @@ def run_techqa_eval(
             "rag_variant": "crag",
             "dataset": "nvidia/TechQA-RAG-Eval",
             "id": sample.qid,
+            "question_id": sample.qid,
             "question": sample.question,
             "gold_answer": sample.answer,
+            "prediction": final_answer,
+            "generator_model": qa_model_name,
             "is_impossible": sample.is_impossible,
             "decision": decision,
             "rewritten_query": rewritten,
@@ -672,8 +673,11 @@ def run_techqa_eval(
             "retrieval_improvement": final_quality - initial_quality,
             "initial_retrieved_doc_ids": [f"tech_{d['doc_id']}" for d in initial_docs],
             "final_retrieved_doc_ids": [f"tech_{d['doc_id']}" for d in final_docs],
+            "retrieved_doc_ids": [f"tech_{d['doc_id']}" for d in final_docs],
             "relevant_doc_ids": sorted(sample.relevant_ids),
         }
+        row.update(final_retrieval)
+        row.update(final_answer_metrics)
         row.update(prefix_metrics("initial", initial_retrieval))
         row.update(prefix_metrics("final", final_retrieval))
         row.update(prefix_metrics("initial", initial_answer_metrics))
@@ -691,12 +695,6 @@ def run_techqa_eval(
             target_retrieval_improvement=target_retrieval_improvement,
         )
 
-    out_path = Path(output_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=True) + "\n")
-
     final_stage_rows = [
         {
             "prediction": row["final_answer"],
@@ -710,6 +708,12 @@ def run_techqa_eval(
         for row, final_stage in zip(rows, final_stage_rows):
             if "bertscore_f1" in final_stage:
                 row["final_bertscore_f1"] = final_stage["bertscore_f1"]
+
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=True) + "\n")
 
     summary = {
         "dataset": "nvidia/TechQA-RAG-Eval (train)",
@@ -744,7 +748,9 @@ def run_techqa_eval(
         )
     )
 
-    Path(summary_path).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_out = Path(summary_path)
+    summary_out.parent.mkdir(parents=True, exist_ok=True)
+    summary_out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print("\n========== TECHQA CRAG SUMMARY ==========")
     print(json.dumps(summary, indent=2))
@@ -759,6 +765,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top_k", type=int, default=5, help="Retriever top-k.")
     parser.add_argument("--output", type=str, default="benchmark_outputs/techqa_eval_results_20.jsonl", help="Output JSONL path.")
     parser.add_argument("--summary", type=str, default="benchmark_outputs/techqa_eval_summary_20.json", help="Summary JSON path.")
+    parser.add_argument("--output_dir", type=str, default=None, help="Optional output directory for both JSONL and summary files.")
     parser.add_argument("--data_json", type=str, default="techqa_train.json", help="Optional local TechQA JSON exported via datasets.to_json.")
     parser.add_argument("--backend", type=str, default="transformers", choices=["llama_cpp", "transformers"], help="Generator backend.")
     parser.add_argument("--model_path", type=str, default=None, help="Model path or HF model id.")
@@ -775,11 +782,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_arg_parser().parse_args()
+    output_path = args.output
+    summary_path = args.summary
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+        output_path = str(output_dir / "techqa_eval_results.jsonl")
+        summary_path = str(output_dir / "techqa_eval_summary.json")
     run_techqa_eval(
         limit=args.limit,
         top_k=args.top_k,
-        output_path=args.output,
-        summary_path=args.summary,
+        output_path=output_path,
+        summary_path=summary_path,
         data_json=args.data_json,
         backend=args.backend,
         model_path=args.model_path,

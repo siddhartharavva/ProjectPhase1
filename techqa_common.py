@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import string
 from dataclasses import asdict, dataclass
@@ -11,16 +12,30 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 import faiss
 import numpy as np
+import pandas as pd
+import torch
 from datasets import load_dataset
 from rank_bm25 import BM25Okapi
 from rouge_score import rouge_scorer
 from sacrebleu.metrics import BLEU
 from sentence_transformers import SentenceTransformer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 
 DATASET_NAME = "nvidia/TechQA-RAG-Eval"
 DEFAULT_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_K_VALUES = (1, 3, 5, 7)
+DEFAULT_EXCLUDE_COLUMNS = (
+    "question",
+    "prediction",
+    "gold_answer",
+    "question_id",
+    "retrieved_doc_ids",
+    "relevant_doc_ids",
+    "dataset",
+    "generator_model",
+    "rag_variant",
+)
 
 
 @dataclass
@@ -64,6 +79,14 @@ def load_techqa_split(
         dataset = load_dataset("json", data_files={split: str(json_path)})
         return dataset[split]
     return load_dataset(dataset_name, split=split, trust_remote_code=True)
+
+
+def configure_runtime() -> None:
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    if torch.cuda.is_available():
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
 
 def build_techqa_corpus_and_samples(rows: Iterable[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -117,6 +140,119 @@ def get_embedder(model_name: str = DEFAULT_EMBED_MODEL, device: str | None = Non
     if device:
         kwargs["device"] = device
     return SentenceTransformer(model_name, **kwargs)
+
+
+def load_causal_lm(model_name: str, *, use_4bit: bool = False, trust_remote_code: bool = True):
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    load_kwargs: Dict[str, Any] = {
+        "device_map": "auto",
+        "trust_remote_code": trust_remote_code,
+        "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+    }
+    if use_4bit and torch.cuda.is_available():
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+        )
+    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+    model.eval()
+    return tokenizer, model
+
+
+def build_context(docs: Sequence[Dict[str, Any]], *, text_key: str = "text", max_docs: int = 5, max_chars_per_doc: int = 900) -> str:
+    chunks = []
+    for index, doc in enumerate(list(docs)[:max_docs], start=1):
+        text = str(doc.get(text_key, "")).strip()
+        if not text and "abstract" in doc:
+            text = str(doc.get("abstract", "")).strip()
+        if text:
+            chunks.append(f"[Document {index}]\n{text[:max_chars_per_doc]}")
+    return "\n\n".join(chunks)
+
+
+def build_rag_prompt(
+    question: str,
+    docs: Sequence[Dict[str, Any]],
+    *,
+    text_key: str = "text",
+    max_docs: int = 5,
+    max_chars_per_doc: int = 900,
+) -> str:
+    context = build_context(docs, text_key=text_key, max_docs=max_docs, max_chars_per_doc=max_chars_per_doc)
+    return (
+        "You are a helpful technical assistant.\n"
+        "Answer the question using ONLY the context below.\n"
+        "If the answer is not in the context, say: I don't know.\n"
+        "Be concise and factual.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {question}\n"
+        "Answer:"
+    )
+
+
+def generate_from_causal_lm(
+    tokenizer,
+    model,
+    prompt: str,
+    *,
+    max_new_tokens: int = 100,
+    do_sample: bool = False,
+    temperature: float | None = None,
+    top_p: float | None = None,
+) -> str:
+    encoded = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048).to(model.device)
+    generate_kwargs: Dict[str, Any] = {
+        "max_new_tokens": max_new_tokens,
+        "do_sample": do_sample,
+        "pad_token_id": tokenizer.pad_token_id,
+    }
+    if temperature is not None:
+        generate_kwargs["temperature"] = temperature
+    if top_p is not None:
+        generate_kwargs["top_p"] = top_p
+    with torch.no_grad():
+        generated = model.generate(**encoded, **generate_kwargs)
+    new_tokens = generated[0][encoded["input_ids"].shape[1] :]
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+
+def filter_answerable_samples(samples: Sequence[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    answerable = [sample for sample in samples if not sample.get("is_impossible") and sample.get("answer")]
+    if limit > 0:
+        return answerable[:limit]
+    return answerable
+
+
+def build_result_row(
+    *,
+    rag_variant: str,
+    question_id: str,
+    question: str,
+    gold_answer: str,
+    prediction: str,
+    retrieved_docs: Sequence[Dict[str, Any]],
+    relevant_ids: set[str],
+    generator_model: str,
+    dataset: str = DATASET_NAME,
+) -> Dict[str, Any]:
+    row: Dict[str, Any] = {
+        "rag_variant": rag_variant,
+        "dataset": dataset,
+        "generator_model": generator_model,
+        "question_id": question_id,
+        "question": question,
+        "gold_answer": gold_answer,
+        "prediction": prediction,
+        "retrieved_doc_ids": [str(doc.get("doc_id")) for doc in retrieved_docs],
+        "relevant_doc_ids": sorted(str(doc_id) for doc_id in relevant_ids),
+    }
+    row.update(compute_retrieval_metrics(row["retrieved_doc_ids"], set(row["relevant_doc_ids"])))
+    row.update(compute_answer_metrics(prediction, gold_answer))
+    return row
 
 
 def encode_texts(
@@ -339,3 +475,42 @@ def write_jsonl(path: str | Path, rows: Sequence[Dict[str, Any]]) -> None:
     with out_path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def save_run_outputs(
+    rows: Sequence[Dict[str, Any]],
+    output_dir: str | Path,
+    *,
+    results_stem: str,
+    summary_stem: str,
+    group_by: str | None = "generator_model",
+    exclude: Sequence[str] = DEFAULT_EXCLUDE_COLUMNS,
+) -> List[Dict[str, Any]]:
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rows_list = list(rows)
+    write_jsonl(out_dir / f"{results_stem}.jsonl", rows_list)
+    pd.DataFrame(rows_list).to_csv(out_dir / f"{results_stem}.csv", index=False)
+
+    if not rows_list:
+        summaries: List[Dict[str, Any]] = []
+    elif group_by and group_by in rows_list[0]:
+        summaries = []
+        frame = pd.DataFrame(rows_list)
+        for group_value, group_frame in frame.groupby(group_by):
+            summary_row = {group_by: group_value}
+            if "rag_variant" in group_frame.columns:
+                summary_row["rag_variant"] = group_frame["rag_variant"].iloc[0]
+            summary_row.update(numeric_summary(group_frame.to_dict(orient="records"), exclude=exclude))
+            summaries.append(summary_row)
+    else:
+        summary_row = {}
+        if rows_list and "rag_variant" in rows_list[0]:
+            summary_row["rag_variant"] = rows_list[0]["rag_variant"]
+        summary_row.update(numeric_summary(rows_list, exclude=exclude))
+        summaries = [summary_row]
+
+    pd.DataFrame(summaries).to_csv(out_dir / f"{summary_stem}.csv", index=False)
+    (out_dir / f"{summary_stem}.json").write_text(json.dumps(summaries, indent=2), encoding="utf-8")
+    return summaries
