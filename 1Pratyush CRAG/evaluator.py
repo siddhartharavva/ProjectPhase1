@@ -4,6 +4,14 @@ from typing import Dict, List
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from techqa_common import DEFAULT_EMBED_MODEL  # noqa: E402
 
 
 class RetrievalEvaluator:
@@ -11,7 +19,7 @@ class RetrievalEvaluator:
 
     def __init__(
         self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        model_name: str = DEFAULT_EMBED_MODEL,
         high_threshold: float = 0.68,
         low_threshold: float = 0.45,
     ) -> None:

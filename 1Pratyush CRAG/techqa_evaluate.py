@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import sys
 from dataclasses import dataclass
 from hashlib import md5
 from pathlib import Path
@@ -21,8 +23,24 @@ from refiner import KnowledgeRefiner
 from retriever import Retriever
 from rewriter import QueryRewriter
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from techqa_common import (  # noqa: E402
+    build_techqa_corpus_and_samples as shared_build_techqa_corpus_and_samples,
+    configure_runtime,
+    compute_answer_metrics,
+    compute_retrieval_metrics,
+    finalize_with_bertscore,
+    load_techqa_split,
+    numeric_summary,
+)
+
 
 UNANSWERABLE = "UNANSWERABLE"
+configure_runtime()
+
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "if", "then", "so", "to", "of", "in", "on", "for", "by", "with", "as",
     "is", "are", "was", "were", "be", "been", "being", "do", "does", "did", "can", "could", "should", "would", "will",
@@ -37,6 +55,7 @@ class TechQASample:
     question: str
     answer: str
     is_impossible: bool
+    relevant_ids: set[str]
 
 
 def normalize_text(text: str) -> str:
@@ -469,55 +488,30 @@ def knn_answer(
 
 
 def load_techqa_dataset(json_path: str | None) -> Dict[str, Any]:
-    if json_path:
-        p = Path(json_path)
-        if not p.exists():
-            raise FileNotFoundError(f"TechQA JSON file not found: {json_path}")
-        ds = load_dataset("json", data_files={"train": str(p)})
-        print(f"[Dataset] Loaded local JSON from {p}")
-        return ds
-
-    print("[Dataset] Loading nvidia/TechQA-RAG-Eval from Hugging Face")
-    return load_dataset("nvidia/TechQA-RAG-Eval")
+    split = load_techqa_split(split="train", data_json=json_path)
+    return {"train": split}
 
 
 def build_corpus_and_samples(train_split) -> tuple[List[Dict[str, Any]], List[TechQASample]]:
-    docs_by_key: Dict[str, Dict[str, Any]] = {}
-    samples: List[TechQASample] = []
-
-    for row in train_split:
-        qid = str(row.get("id", ""))
-        question = str(row.get("question", "")).strip()
-        answer = str(row.get("answer", "")).strip()
-        impossible = bool(row.get("is_impossible", False))
-        contexts = row.get("contexts", []) or []
-
-        if question:
-            samples.append(
-                TechQASample(
-                    qid=qid,
-                    question=question,
-                    answer=answer,
-                    is_impossible=impossible,
-                )
-            )
-
-        for c in contexts:
-            filename = str(c.get("filename", "")).strip()
-            text = str(c.get("text", "")).strip()
-            if not text:
-                continue
-            key_src = f"{filename}||{text}"
-            key = md5(key_src.encode("utf-8")).hexdigest()
-            if key in docs_by_key:
-                continue
-            docs_by_key[key] = {
-                "doc_id": len(docs_by_key),
-                "title": filename or f"doc_{len(docs_by_key)}",
-                "abstract": text,
-            }
-
-    corpus = list(docs_by_key.values())
+    shared_corpus, shared_samples = shared_build_techqa_corpus_and_samples(train_split)
+    corpus = [
+        {
+            "doc_id": int(str(doc["doc_id"]).split("_")[-1]),
+            "title": str(doc["title"]),
+            "abstract": str(doc["text"]),
+        }
+        for doc in shared_corpus
+    ]
+    samples = [
+        TechQASample(
+            qid=str(sample["qid"]),
+            question=str(sample["question"]),
+            answer=str(sample["answer"]),
+            is_impossible=bool(sample["is_impossible"]),
+            relevant_ids=set(sample["relevant_ids"]),
+        )
+        for sample in shared_samples
+    ]
     print(f"[Dataset] Built corpus with {len(corpus)} unique context docs")
     print(f"[Dataset] Built {len(samples)} QA samples")
     return corpus, samples
@@ -538,13 +532,18 @@ def run_techqa_eval(
     target_final_f1: float,
     target_retrieval_improvement: float,
     use_semantic_memory: bool,
+    skip_bertscore: bool,
 ) -> Dict[str, Any]:
+    def prefix_metrics(prefix: str, metrics: Dict[str, float]) -> Dict[str, float]:
+        return {f"{prefix}_{key}": value for key, value in metrics.items()}
+
     ds = load_techqa_dataset(data_json)
     train = ds["train"]
     corpus, samples = build_corpus_and_samples(train)
 
     if limit > 0:
         samples = samples[:limit]
+    samples = [sample for sample in samples if not sample.is_impossible and sample.answer]
 
     retriever = Retriever()
 
@@ -648,11 +647,20 @@ def run_techqa_eval(
 
         initial_quality = retrieval_quality(initial_docs)
         final_quality = retrieval_quality(final_docs)
+        initial_retrieval = compute_retrieval_metrics([f"tech_{d['doc_id']}" for d in initial_docs], sample.relevant_ids)
+        final_retrieval = compute_retrieval_metrics([f"tech_{d['doc_id']}" for d in final_docs], sample.relevant_ids)
+        initial_answer_metrics = compute_answer_metrics(initial_answer, sample.answer)
+        final_answer_metrics = compute_answer_metrics(final_answer, sample.answer)
 
         row = {
+            "rag_variant": "crag",
+            "dataset": "nvidia/TechQA-RAG-Eval",
             "id": sample.qid,
+            "question_id": sample.qid,
             "question": sample.question,
             "gold_answer": sample.answer,
+            "prediction": final_answer,
+            "generator_model": qa_model_name,
             "is_impossible": sample.is_impossible,
             "decision": decision,
             "rewritten_query": rewritten,
@@ -663,7 +671,17 @@ def run_techqa_eval(
             "initial_f1": initial_f1,
             "final_f1": final_f1,
             "retrieval_improvement": final_quality - initial_quality,
+            "initial_retrieved_doc_ids": [f"tech_{d['doc_id']}" for d in initial_docs],
+            "final_retrieved_doc_ids": [f"tech_{d['doc_id']}" for d in final_docs],
+            "retrieved_doc_ids": [f"tech_{d['doc_id']}" for d in final_docs],
+            "relevant_doc_ids": sorted(sample.relevant_ids),
         }
+        row.update(final_retrieval)
+        row.update(final_answer_metrics)
+        row.update(prefix_metrics("initial", initial_retrieval))
+        row.update(prefix_metrics("final", final_retrieval))
+        row.update(prefix_metrics("initial", initial_answer_metrics))
+        row.update(prefix_metrics("final", final_answer_metrics))
         rows.append(row)
 
     if supervised_overfit:
@@ -676,6 +694,20 @@ def run_techqa_eval(
             target_final_f1=target_final_f1,
             target_retrieval_improvement=target_retrieval_improvement,
         )
+
+    final_stage_rows = [
+        {
+            "prediction": row["final_answer"],
+            "gold_answer": row["gold_answer"],
+            **{key: value for key, value in row.items() if key.startswith("final_")},
+        }
+        for row in rows
+    ]
+    if not skip_bertscore:
+        finalize_with_bertscore(final_stage_rows)
+        for row, final_stage in zip(rows, final_stage_rows):
+            if "bertscore_f1" in final_stage:
+                row["final_bertscore_f1"] = final_stage["bertscore_f1"]
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -696,8 +728,29 @@ def run_techqa_eval(
         "avg_retrieval_improvement": mean(float(r["retrieval_improvement"]) for r in rows) if rows else 0.0,
         "source_jsonl": str(out_path),
     }
+    summary.update(
+        numeric_summary(
+            rows,
+            exclude=(
+                "question",
+                "gold_answer",
+                "initial_answer",
+                "final_answer",
+                "rewritten_query",
+                "initial_retrieved_doc_ids",
+                "final_retrieved_doc_ids",
+                "relevant_doc_ids",
+                "dataset",
+                "rag_variant",
+                "decision",
+                "id",
+            ),
+        )
+    )
 
-    Path(summary_path).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_out = Path(summary_path)
+    summary_out.parent.mkdir(parents=True, exist_ok=True)
+    summary_out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print("\n========== TECHQA CRAG SUMMARY ==========")
     print(json.dumps(summary, indent=2))
@@ -712,6 +765,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top_k", type=int, default=5, help="Retriever top-k.")
     parser.add_argument("--output", type=str, default="benchmark_outputs/techqa_eval_results_20.jsonl", help="Output JSONL path.")
     parser.add_argument("--summary", type=str, default="benchmark_outputs/techqa_eval_summary_20.json", help="Summary JSON path.")
+    parser.add_argument("--output_dir", type=str, default=None, help="Optional output directory for both JSONL and summary files.")
     parser.add_argument("--data_json", type=str, default="techqa_train.json", help="Optional local TechQA JSON exported via datasets.to_json.")
     parser.add_argument("--backend", type=str, default="transformers", choices=["llama_cpp", "transformers"], help="Generator backend.")
     parser.add_argument("--model_path", type=str, default=None, help="Model path or HF model id.")
@@ -722,16 +776,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target_final_f1", type=float, default=0.58, help="Target final F1 for supervised overfit mode.")
     parser.add_argument("--target_retrieval_improvement", type=float, default=0.11, help="Additive retrieval improvement boost for supervised overfit mode.")
     parser.add_argument("--use_semantic_memory", action="store_true", help="Use leave-one-out nearest-neighbor answer memory from other train questions.")
+    parser.add_argument("--skip_bertscore", action="store_true", help="Skip expensive BERTScore computation.")
     return parser
 
 
 def main() -> None:
     args = build_arg_parser().parse_args()
+    output_path = args.output
+    summary_path = args.summary
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+        output_path = str(output_dir / "techqa_eval_results.jsonl")
+        summary_path = str(output_dir / "techqa_eval_summary.json")
     run_techqa_eval(
         limit=args.limit,
         top_k=args.top_k,
-        output_path=args.output,
-        summary_path=args.summary,
+        output_path=output_path,
+        summary_path=summary_path,
         data_json=args.data_json,
         backend=args.backend,
         model_path=args.model_path,
@@ -742,6 +803,7 @@ def main() -> None:
         target_final_f1=args.target_final_f1,
         target_retrieval_improvement=args.target_retrieval_improvement,
         use_semantic_memory=args.use_semantic_memory,
+        skip_bertscore=args.skip_bertscore,
     )
 
 

@@ -1,0 +1,11 @@
+{
+  "method": "Platt Scaling (Logistic Regression)",
+  "coef_magnitude": 0.6479,
+  "coef_cohesion": 0.3966,
+  "coef_kw_score": 0.038,
+  "intercept": 0.2188,
+  "n_calibration_samples": 150,
+  "ece_on_calib_set": 0.214,
+  "threshold_fast": 0.65,
+  "threshold_abstain": 0.35
+}

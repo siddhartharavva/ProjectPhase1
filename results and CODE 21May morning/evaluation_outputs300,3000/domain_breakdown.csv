@@ -1,0 +1,6 @@
+Domain,Count,NDCG@3,SemSim,Abstain %
+arguana,30,0.3393,0.6638,0.0
+scidocs,30,0.6667,0.5133,20.0
+fever,30,0.92,0.7072,43.3
+hotpotqa,30,0.9044,0.6101,20.0
+quora,30,1.0,0.7197,0.0
