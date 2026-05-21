@@ -1,0 +1,8 @@
+{
+  "method": "Fallback (single-class calibration data)",
+  "n_calibration_samples": 3,
+  "unique_labels": 1,
+  "fixed_probability": 0.8,
+  "threshold_fast": 0.65,
+  "threshold_abstain": 0.35
+}
